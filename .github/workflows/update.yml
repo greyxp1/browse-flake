@@ -1,0 +1,93 @@
+name: Update
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "29 * * * *"
+    - cron: "7 8 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.update.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+      - name: Update pins
+        id: update
+        env:
+          REFRESH_INPUTS: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '7 8 * * 1' }}
+        run: |
+          set -euo pipefail
+          ./update.sh
+          if [ "$REFRESH_INPUTS" = true ]; then
+            nix flake update
+          fi
+          if git diff --quiet -- sources.json flake.lock; then
+            exit 0
+          fi
+          nix flake check --no-build --all-systems --no-update-lock-file
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: steps.update.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        with:
+          name: update
+          path: |
+            sources.json
+            flake.lock
+          if-no-files-found: error
+          retention-days: 1
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: update
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+      - name: Build and check Browse
+        run: nix run --no-update-lock-file . -- --version
+
+  commit:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: update
+      - name: Commit update
+        env:
+          UPDATE_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sources.json flake.lock
+          git commit -m "updated browse and nix inputs"
+          git push origin "HEAD:$UPDATE_BRANCH"

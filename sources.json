@@ -1,0 +1,11 @@
+{
+  "version": "0.1.5",
+  "x86_64-linux": {
+    "url": "https://anoma.ly/release/browse/files/8ba73f16322a42544cad3a97490bfd14957b97b108b58f43913e6ca088a3cdd7/opencode-browse-linux-x64-0.1.5.tgz",
+    "sha256": "8ba73f16322a42544cad3a97490bfd14957b97b108b58f43913e6ca088a3cdd7"
+  },
+  "aarch64-linux": {
+    "url": "https://anoma.ly/release/browse/files/0b550e8b6623994a947bc998704b4bc5e796e307323de5f947cd4abd7c7d7dab/opencode-browse-linux-arm64-0.1.5.tgz",
+    "sha256": "0b550e8b6623994a947bc998704b4bc5e796e307323de5f947cd4abd7c7d7dab"
+  }
+}
